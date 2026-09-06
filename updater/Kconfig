@@ -1,0 +1,25 @@
+# Application Kconfig.
+#
+# One symbol so far. It exists rather than being implied by CONFIG_LORA
+# because "the board has a LoRa radio" and "this firmware should announce
+# itself on a mesh" are different decisions — a RAK4631 flown somewhere with
+# no MeshCore network wants the driver's flash back.
+
+config APP_LORA_STATUS
+	bool "Announce DFU progress on a MeshCore channel over LoRa"
+	depends on LORA
+	default y
+	help
+	  Mirrors the dfu_status record onto a MeshCore group channel: the
+	  target found, progress at 25/50/75%, verification, and the outcome.
+	  Transmit only — there is no receive path and the device is not a
+	  mesh node.
+
+	  Only the RAK4631 has the radio. On every other board CONFIG_LORA is
+	  off, this is unselectable, and lora_status.h's empty inlines make
+	  the call sites in dfu_status.c disappear.
+
+	  The channel is set in config.txt (`lora_channel`), and an empty
+	  value there keeps the radio idle without rebuilding.
+
+source "Kconfig.zephyr"
