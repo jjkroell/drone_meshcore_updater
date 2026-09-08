@@ -227,9 +227,27 @@ export function defFor(field, board) {
   return tuningFor(board)[field.key] ?? field.def;
 }
 
-/* The LoRa bandwidths the SX1262 actually has, in kHz, mirroring
- * bw_from_khz() in updater/src/lora_tx.c. 62 means 62.5. */
-const LORA_BANDWIDTHS = [7, 10, 15, 20, 31, 41, 62, 125, 250, 500];
+/* The LoRa bandwidths the SX1262 actually has, mirroring bw_from_khz() in
+ * updater/src/lora_tx.c.
+ *
+ * `value` is Zephyr's enum identifier (BW_62_KHZ === 62) and is what goes in
+ * config.txt; `label` is the bandwidth the radio actually uses. They differ for
+ * six of the ten, because Zephyr rounds the name to a whole number — 62 is
+ * really 62.5, 41 is 41.67, 7 is 7.81 — and showing the identifier as though it
+ * were the frequency misreports the radio to anyone comparing it against a
+ * MeshCore client, which prints the true value. */
+const LORA_BANDWIDTHS = [
+  { value: 7, label: "7.81 kHz" },
+  { value: 10, label: "10.42 kHz" },
+  { value: 15, label: "15.63 kHz" },
+  { value: 20, label: "20.83 kHz" },
+  { value: 31, label: "31.25 kHz" },
+  { value: 41, label: "41.67 kHz" },
+  { value: 62, label: "62.5 kHz" },
+  { value: 125, label: "125 kHz" },
+  { value: 250, label: "250 kHz" },
+  { value: 500, label: "500 kHz" },
+];
 
 export const CONFIG_SCHEMA = [
   {
@@ -605,6 +623,25 @@ export const CONFIG_SCHEMA = [
       : "no spaces — the name is hashed exactly as typed"),
   },
   {
+    key: "lora_region",
+    label: "lora_region",
+    title: "Restrict which repeaters carry it",
+    type: "text",
+    def: "",
+    maxLength: 31,
+    placeholder: "(unscoped — every repeater rebroadcasts)",
+    desc: `MeshCore transport region, written as the app shows it — e.g. "YVR".
+           A "#" is added if you leave it off, matching the firmware, so "YVR"
+           and "#YVR" are the same region. Empty sends an ordinary flood.
+           ⚠ Only repeaters running the repeater firmware enforce this; room
+           servers compute the region and never check it, and companions in
+           repeat mode ignore regions entirely — so on a mixed mesh this
+           narrows the flood rather than gating it.`,
+    check: (v) => (v === "" || /^#?[^\s]{1,30}$/.test(v)
+      ? null
+      : "no spaces — the name is hashed exactly as typed"),
+  },
+  {
     key: "lora_sender",
     label: "lora_sender",
     title: "Name shown before the message",
@@ -636,21 +673,24 @@ export const CONFIG_SCHEMA = [
     key: "lora_bw",
     label: "lora_bw",
     title: "Bandwidth",
-    type: "int",
+    /* A select, not a number box: the radio has ten discrete steps rather than
+     * a range, and lora_tx.c refuses anything else instead of rounding to a
+     * neighbour. A free number field accepted 100, wrote it, and then failed
+     * on every send with only a device-log line to say why. The dropdown also
+     * lets the label show the true bandwidth while the stored value stays
+     * Zephyr's rounded enum identifier. */
+    type: "select",
     def: 62,
-    min: 7,
-    max: 500,
-    unit: "kHz",
-    /* min/max alone would accept 100, which the firmware stores and then
-     * refuses on every send — the radio has ten discrete steps, not a range,
-     * and lora_tx.c declines rather than rounding to a neighbour. Without this
-     * the only symptom is a device log line nobody is watching. */
-    check: (v) => (LORA_BANDWIDTHS.includes(Number(v))
+    options: LORA_BANDWIDTHS,
+    check: (v) => (LORA_BANDWIDTHS.some(b => b.value === Number(v))
       ? null
-      : `not a bandwidth this radio has — one of ${LORA_BANDWIDTHS.join(", ")}`),
-    desc: `62 means 62.5. Only the radio's own steps exist — 7, 10, 15, 20, 31,
-           41, 62, 125, 250, 500 — and anything else is refused at send time
-           rather than rounded to a neighbour.`,
+      : `not a bandwidth this radio has — one of ${
+          LORA_BANDWIDTHS.map(b => b.label).join(", ")}`),
+    desc: `Must match the mesh. Stored as Zephyr's enum identifier, which is the
+           bandwidth rounded to a whole number — config.txt will read
+           lora_bw=62 for 62.5 kHz — so the list shows what the radio actually
+           uses. Anything not on it is refused at send time rather than rounded
+           to a neighbour.`,
   },
   {
     key: "lora_sf",
@@ -735,10 +775,13 @@ export const CONFIG_SCHEMA = [
     unit: "s",
     placeholder: "(unknown)",
     desc: `Unix seconds, added to uptime to timestamp each message. There is no
-           RTC on this board, so left at 0 the messages still work — the
-           timestamp's real job is keeping each packet's hash distinct so
-           repeaters do not suppress it — but clients will render them as 1970.
-           Set it to the current epoch when you edit this file.`,
+           RTC here, so without this the firmware substitutes a random value per
+           boot and messages carry a meaningless date. That randomness is
+           load-bearing, not cosmetic: MeshCore hashes a packet over its payload
+           alone and every node suppresses a hash it has already seen, so
+           byte-identical messages are delivered once and then silently dropped
+           — which is what made the boot message vanish after its first ever
+           send. Set this to the current epoch to get real times as well.`,
   },
   {
     key: "lora_min_gap_ms",

@@ -11,6 +11,7 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/random/random.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -68,6 +69,30 @@ static bool s_announced;      /* target announced once per run */
 static bool s_verified;       /* VERIFYING announced once per run */
 static uint32_t s_t0;
 
+/*
+ * A per-boot base for message timestamps, used when no wall clock is known.
+ *
+ * **This is not cosmetic, it decides whether a message is delivered at all.**
+ * MeshCore identifies a packet by SHA-256 over its payload type and payload
+ * and nothing else (Packet.cpp, calculatePacketHash) — not the path, not the
+ * route type, not the hop count — and every node suppresses a hash it has
+ * already seen. The timestamp is the only field that varies between two
+ * otherwise identical messages, which is why MeshCore's own comment calls it
+ * "mostly an extra blob to help make packet_hash unique".
+ *
+ * With lora_epoch unset it was 0 + uptime, and the boot message is sent at an
+ * uptime of ~0.15 s, so **every boot produced a byte-identical packet**. The
+ * first one was delivered and every one after it was silently dropped as a
+ * duplicate by every node that still remembered it — including the operator's
+ * own client. It looked like a radio problem and was an identity problem.
+ *
+ * So when there is no epoch to add uptime to, add a random base instead.
+ * Timestamps then render as a meaningless date, which is honest — the device
+ * genuinely does not know the time — and every message is distinct. Set
+ * lora_epoch to get both.
+ */
+static uint32_t s_boot_base;
+
 static bool enabled(uint32_t bit)
 {
 	const struct app_config *cfg = app_config_current();
@@ -100,6 +125,9 @@ void lora_status_boot(void)
 	 * missing or unready lora0 is reported at boot — in the log a person
 	 * reads after a flight — instead of at the one moment there is
 	 * something to say. */
+	/* Once per boot, before anything can be queued. */
+	s_boot_base = sys_rand32_get();
+
 	if (lora_tx_init() != 0) {
 		return;
 	}
@@ -327,7 +355,10 @@ static void format(const struct evt *e, char *out, size_t cap)
 static void tx_thread(void *a, void *b, void *c)
 {
 	uint8_t key[MESHCORE_KEY_LEN];
+	uint8_t rkey[MESHCORE_KEY_LEN];
 	char channel[APP_CONFIG_CHANNEL_MAX] = {0};
+	char region[APP_CONFIG_CHANNEL_MAX] = {0};
+	bool have_region = false;
 	uint8_t frame[MESHCORE_GRP_MAX_FRAME];
 	struct evt e;
 	char text[96];
@@ -349,6 +380,7 @@ static void tx_thread(void *a, void *b, void *c)
 		struct lora_tx_params tx;
 		char sender[APP_CONFIG_SENDER_MAX];
 		char want_channel[APP_CONFIG_CHANNEL_MAX];
+		char want_region[APP_CONFIG_CHANNEL_MAX];
 		uint32_t epoch, min_gap;
 		uint8_t path_hash;
 		uint32_t now, gap;
@@ -371,6 +403,8 @@ static void tx_thread(void *a, void *b, void *c)
 			strncpy(want_channel, cfg->lora_channel,
 				sizeof(want_channel) - 1);
 			want_channel[sizeof(want_channel) - 1] = '\0';
+			strncpy(want_region, cfg->lora_region, sizeof(want_region) - 1);
+			want_region[sizeof(want_region) - 1] = '\0';
 		}
 
 		/* Derive the channel key lazily, and again whenever the name
@@ -386,6 +420,24 @@ static void tx_thread(void *a, void *b, void *c)
 			strncpy(channel, want_channel, sizeof(channel) - 1);
 			have_key = true;
 			LOG_INF("channel %s, hash %02x", channel, meshcore_channel_hash(key));
+		}
+
+		/* Region key, on the same lazy re-derive discipline as the
+		 * channel. Empty means an unscoped flood. */
+		if (strcmp(region, want_region) != 0) {
+			have_region = false;
+			if (want_region[0] != '\0') {
+				if (meshcore_region_key_from_name(want_region, rkey) == 0) {
+					have_region = true;
+					LOG_INF("region %s — only repeaters holding it "
+						"will rebroadcast", want_region);
+				} else {
+					LOG_ERR("lora_region=\"%s\" unusable — sending "
+						"unscoped", want_region);
+				}
+			}
+			strncpy(region, want_region, sizeof(region) - 1);
+			region[sizeof(region) - 1] = '\0';
 		}
 
 		/* The backstop. Enforced here rather than at the hooks so that
@@ -406,8 +458,14 @@ static void tx_thread(void *a, void *b, void *c)
 		 * is unknown. lora_epoch, when set, makes it a real time as
 		 * well; unset, uptime alone still keeps every packet distinct.
 		 */
-		len = meshcore_grp_txt_encode(key, epoch + (k_uptime_get_32() / 1000U),
-					      sender, text, path_hash, frame,
+		/* A real time when one is configured; otherwise a per-boot
+		 * random base, so two boots cannot produce the same packet.
+		 * See s_boot_base. */
+		len = meshcore_grp_txt_encode(key,
+					      (epoch != 0U ? epoch : s_boot_base) +
+						      (k_uptime_get_32() / 1000U),
+					      sender, text, path_hash,
+					      have_region ? rkey : NULL, frame,
 					      sizeof(frame));
 		if (len < 0) {
 			LOG_ERR("encode: %d", len);

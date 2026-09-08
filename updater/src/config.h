@@ -303,6 +303,21 @@ struct app_config {
 	 */
 	char     lora_channel[APP_CONFIG_CHANNEL_MAX];
 
+	/* Restrict which repeaters rebroadcast these messages, by MeshCore
+	 * transport region — e.g. "YVR". Written the way the MeshCore app shows
+	 * it; a '#' is supplied if absent, matching upstream, so "YVR" and
+	 * "#YVR" are the same region.
+	 *
+	 * Empty (the default) sends an ordinary flood that every repeater
+	 * carries.
+	 *
+	 * ⚠ Only `simple_repeater` enforces this. `simple_room_server` computes
+	 * the region and then never checks it, and `companion_radio` in repeat
+	 * mode has no region concept — so on a mixed mesh this narrows the
+	 * flood rather than gating it.
+	 */
+	char     lora_region[APP_CONFIG_CHANNEL_MAX];
+
 	/* The "<sender>: " prefix inside each message. Clients split on the
 	 * first ": ", so a name containing a colon loses its attribution and
 	 * the whole line renders as an unattributed message. */
@@ -355,11 +370,20 @@ struct app_config {
 	uint8_t  lora_path_hash;
 
 	/* Unix seconds at boot, or 0. There is no RTC on this board, so
-	 * message timestamps are this plus uptime. Left at 0 the messages
-	 * still work — the value's real job is keeping each packet's hash
-	 * distinct so repeaters do not suppress it as a duplicate — but
-	 * clients will render them as 1970. The web client can write the
-	 * current time here when it uploads a bundle.
+	 * message timestamps are this plus uptime.
+	 *
+	 * ⚠ An earlier version of this comment said the messages "still work"
+	 * with it left at 0. That was wrong and cost a long debugging session.
+	 * MeshCore hashes a packet over its payload alone (Packet.cpp,
+	 * calculatePacketHash) and every node suppresses a hash it has already
+	 * seen — so with no epoch the boot message, always sent at an uptime of
+	 * ~0, was byte-identical every time and delivered exactly once, ever.
+	 * It looked like a radio fault and was an identity collision.
+	 *
+	 * lora_status.c now substitutes a random per-boot base when this is 0,
+	 * which restores delivery at the cost of a meaningless displayed date.
+	 * Set this to get real timestamps as well; the web client knows the
+	 * time and can write it whenever it saves the config.
 	 */
 	uint32_t lora_epoch;
 
