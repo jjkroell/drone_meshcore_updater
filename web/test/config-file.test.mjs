@@ -59,7 +59,7 @@ const FIRMWARE_DEFAULTS = {
    */
   lora_channel: "#drone-updater", lora_region: "", lora_sender: "drone-updater",
   lora_freq: "910.425", lora_bw: 62, lora_sf: 7, lora_cr: 5,
-  lora_tx_power: 22, lora_events: "target,progress,verify,done",
+  lora_tx_power: 22, lora_events: "scanning,target,progress,verify,done",
   lora_hello: false, lora_epoch: 0, lora_min_gap_ms: 3000,
   lora_path_hash: 2,
 };
