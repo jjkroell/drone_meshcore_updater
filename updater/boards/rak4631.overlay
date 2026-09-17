@@ -95,11 +95,13 @@
 		 * fragment deletes, so it has to be re-chosen either way. */
 		zephyr,code-partition = &slot0_partition;
 
-		zephyr,console = &board_cdc_acm_uart;
-		zephyr,shell-uart = &board_cdc_acm_uart;
-		zephyr,uart-mcumgr = &board_cdc_acm_uart;
-		zephyr,bt-mon-uart = &board_cdc_acm_uart;
-		zephyr,bt-c2h-uart = &board_cdc_acm_uart;
+		/* No console on this board — the USB CDC serial port and its whole
+		 * device stack were removed to reclaim ~18 KB (see rak4631.conf). The
+		 * board's own default console is uart1, left unchosen on purpose so a
+		 * console does not silently reappear on a hardware UART; UART_CONSOLE
+		 * is off. The shell / uart-mcumgr / bt-mon / bt-c2h chosen entries that
+		 * used to point here were all inert (those transports are BLE-only or
+		 * disabled), so they are simply dropped. */
 	};
 
 	/* led.c asks by colour. Supplying green and blue but no red selects its
@@ -111,11 +113,8 @@
 	};
 };
 
-&zephyr_udc0 {
-	board_cdc_acm_uart: board_cdc_acm_uart {
-		compatible = "zephyr,cdc-acm-uart";
-	};
-};
+/* The CDC ACM node that used to hang off &zephyr_udc0 is gone with the USB
+ * stack. Nothing references the USB device controller now. */
 
 /* Polarity, not pin choice — see the header. */
 &green_led {
