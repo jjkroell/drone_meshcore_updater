@@ -24,6 +24,10 @@ build_*/
 updater/build/
 updater/build_*/
 
+# Local build/toolchain/console logs (baseline.log, build-attempt.log,
+# console.log from capture.py, west-update.log, toolchain-setup.log, ...)
+*.log
+
 # Toolchain-manager pyc caches
 __pycache__/
 *.pyc
