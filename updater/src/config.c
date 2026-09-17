@@ -262,6 +262,7 @@ static void apply_kv(struct app_config *c, const char *key, const char *val)
 			{"progress", LORA_EVT_PROGRESS},
 			{"verify", LORA_EVT_VERIFY},
 			{"done", LORA_EVT_DONE},
+			{"scanning", LORA_EVT_SCANNING},
 		};
 		uint8_t bits = 0;
 		const char *p = val;

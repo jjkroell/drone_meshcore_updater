@@ -730,9 +730,10 @@ export const CONFIG_SCHEMA = [
     label: "lora_events",
     title: "What to announce",
     type: "text",
-    def: "target,progress,verify,done",
-    desc: `Comma-separated: target, progress, verify, done. Empty announces
-           nothing while leaving the channel configured. Start with "done"
+    def: "scanning,target,progress,verify,done",
+    desc: `Comma-separated: scanning, target, progress, verify, done. Empty
+           announces nothing while leaving the channel configured. "scanning"
+           fires once when a run starts looking for a target. Start with "done"
            alone when bringing a new mesh up — progress messages transmit in
            the middle of a DFU stream, which is the one moment worth being
            careful about.`,

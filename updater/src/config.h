@@ -342,8 +342,8 @@ struct app_config {
 
 	/* Which events transmit; see the LORA_EVT_* bits in lora_status.h.
 	 * config.txt takes a comma-separated list:
-	 *   lora_events=target,progress,verify,done
-	 * An absent key means all four. `lora_events=` with nothing after it
+	 *   lora_events=scanning,target,progress,verify,done
+	 * An absent key means all five. `lora_events=` with nothing after it
 	 * means none, which is a quieter off switch than clearing the channel.
 	 */
 	uint8_t  lora_events;

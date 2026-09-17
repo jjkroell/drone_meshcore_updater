@@ -24,6 +24,7 @@ LOG_MODULE_REGISTER(lora_status, LOG_LEVEL_INF);
 
 enum evt_kind {
 	EVT_HELLO = 0,
+	EVT_SCANNING,
 	EVT_TARGET,
 	EVT_PROGRESS,
 	EVT_VERIFY,
@@ -65,6 +66,7 @@ static uint8_t s_high_pct;
 /* The last 25/50/75 bucket announced, so each is sent at most once per run.
  * Distinct from s_high_pct: this one gates transmission, that one is data. */
 static uint8_t s_high_bucket;
+static bool s_scanned;        /* SCANNING announced once per run */
 static bool s_announced;      /* target announced once per run */
 static bool s_verified;       /* VERIFYING announced once per run */
 static uint32_t s_t0;
@@ -148,6 +150,7 @@ void lora_status_begin(uint8_t retries)
 	s_attempt = 0;
 	s_high_pct = 0;
 	s_high_bucket = 0;
+	s_scanned = false;
 	s_announced = false;
 	s_verified = false;
 	s_name[0] = '\0';
@@ -250,6 +253,24 @@ void lora_status_state(enum dfu_status_state state)
 	struct evt e;
 	bool first;
 
+	/* Scanning is entered once per attempt inside the retry loop, so gate it
+	 * to the first of a run — like the target and verify announcements — or a
+	 * run that retries sixty times would send sixty "scanning" lines. No name
+	 * yet: the target is not known until find_target() returns. */
+	if (state == DFU_STATUS_SCANNING) {
+		key = k_spin_lock(&s_lock);
+		first = !s_scanned;
+		s_scanned = true;
+		k_spin_unlock(&s_lock, key);
+		if (!first || !enabled(LORA_EVT_SCANNING)) {
+			return;
+		}
+		memset(&e, 0, sizeof(e));
+		e.kind = EVT_SCANNING;
+		push(&e);
+		return;
+	}
+
 	if (state != DFU_STATUS_VERIFYING) {
 		return;
 	}
@@ -326,6 +347,9 @@ static void format(const struct evt *e, char *out, size_t cap)
 	switch (e->kind) {
 	case EVT_HELLO:
 		snprintf(out, cap, "online");
+		break;
+	case EVT_SCANNING:
+		snprintf(out, cap, "scanning");
 		break;
 	case EVT_TARGET:
 		snprintf(out, cap, "found %s", name);
