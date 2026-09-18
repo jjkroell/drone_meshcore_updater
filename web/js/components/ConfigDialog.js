@@ -4,7 +4,7 @@ import { loadConfig, saveConfig, log, deviceBoard } from "../store.js";
 import {
   CONFIG_SCHEMA, CONFIG_PATH, CONFIG_MAX_BYTES,
   validateField, advisories, serializeConfig, encodedSize, defaults, defFor,
-  tuningFor,
+  tuningFor, fieldApplies,
 } from "../lib/config-file.js";
 import MappingEditor from "./MappingEditor.js";
 
@@ -23,6 +23,8 @@ export default {
      * — config-file.js treats that as the nRF, which is what a device too old
      * to report a board can only be. */
     const board    = computed(() => deviceBoard.value);
+    /* Hide fields for radios this board does not have (WiFi on a LoRa board, etc.). */
+    const schema   = computed(() => CONFIG_SCHEMA.filter(f => fieldApplies(f, board.value)));
     const values   = reactive(defaults(board.value));
     const unknown  = ref([]);
     const ignored  = ref([]);
@@ -150,7 +152,7 @@ export default {
     }
 
     return {
-      schema: CONFIG_SCHEMA, CONFIG_PATH, CONFIG_MAX_BYTES,
+      schema, CONFIG_PATH, CONFIG_MAX_BYTES,
       values, unknown, ignored, exists, loading, saving, error, showRaw,
       errors, hasErrors, notes, text, size, overSize, dirty,
       isModified, isDefault, resetField, resetAll, optionsFor, fieldNote,

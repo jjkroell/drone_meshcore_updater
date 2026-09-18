@@ -219,6 +219,25 @@ export function platformFor(board) {
 
 export const tuningFor = (board) => TUNING_PLATFORMS[platformFor(board) ?? "nordic"];
 
+/* Which radios a board carries, so the config dialog can hide the fields that
+ * do nothing on it. WiFi is ESP32-only; LoRa (the SX1262) currently ships on
+ * the RAK4631 alone — add boards here as they gain the radio. A null/unknown
+ * board (old firmware that can't name itself) is treated as "show everything",
+ * because hiding a field the user might need is worse than showing an inert one. */
+export const hasWifi = (board) => String(platformFor(board) ?? "").startsWith("espressif");
+export const hasLora = (board) => /rak4631/i.test(String(board ?? ""));
+
+/* Should this field be shown for this board? Radio-specific fields are keyed by
+ * a `wifi_`/`lora_` prefix, so the rule needs no per-field tagging and picks up
+ * new fields automatically. Unknown board => show all. */
+export function fieldApplies(field, board) {
+  if (!board) return true;
+  const k = field.key ?? "";
+  if (k.startsWith("wifi_")) return hasWifi(board);
+  if (k.startsWith("lora_")) return hasLora(board);
+  return true;
+}
+
 /* The default for one field on one board. Fields without a `defByPlatform`
  * are the same everywhere, which is most of them. */
 export function defFor(field, board) {
