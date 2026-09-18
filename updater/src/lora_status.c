@@ -346,7 +346,7 @@ static void format(const struct evt *e, char *out, size_t cap)
 
 	switch (e->kind) {
 	case EVT_HELLO:
-		snprintf(out, cap, "online");
+		snprintf(out, cap, "online - please start a scan in the app");
 		break;
 	case EVT_SCANNING:
 		snprintf(out, cap, "scanning");
