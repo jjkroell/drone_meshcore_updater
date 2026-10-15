@@ -76,10 +76,94 @@ is the one least likely to own a probe. To flash a build of your own, run
 - **Auto flash** scans first and picks the bundle by matching the target's
   advertised name against the rules in `ble_firmware_mapping` — useful when
   one updater carries firmware for several devices. Set the rules under
-  **Config** first.
+  **Config** first — see [Auto flash rules](#auto-flash-rules) below.
 
 Either way the updater scans, connects, triggers the target's bootloader,
 streams the image, validates and activates it.
+
+#### Auto flash rules
+
+`ble_firmware_mapping` is a list of rules separated by `|`. Each rule is
+`advertised-name:file-pattern`:
+
+```
+ProMicro_OTA:promicro*bootloader*.zip | PROM_DFU:ProMicro_repeater*.zip
+```
+
+- **The name half** matches if that text appears *anywhere* in the name the
+  target is advertising. Case-sensitive. The **first** rule that matches wins.
+- **The file half** is matched against the *whole* filename of the bundles
+  you uploaded. `*` = any characters, `?` = one character. Case-sensitive. If
+  several files match, the one whose name sorts **last** wins (so
+  `rak_v2.zip` beats `rak_v1.zip`).
+- The pattern sees the bundle's own filename only — not the `firmware.bin`
+  inside it. `*firmware*.zip` does not match `ProMicro_repeater-1.17.zip`.
+- The whole value is limited to 191 characters.
+
+The bundle is chosen once, from the first name the target is found under, and
+kept for the rest of the run — the target changes its name halfway through
+(`_OTA` → `_DFU` when it jumps to its bootloader) and the file must not change
+with it.
+
+**Bootloader and firmware in one run.** A SoftDevice/bootloader package erases
+the target's application on the way in, so the target comes back in DFU mode
+with nothing to boot. Under auto flash the updater does not stop there: it
+waits for the same device to reappear under its **DFU-mode name**, looks that
+name up in the rules again, and sends the application. That is why a
+bootloader update needs **two rules** — one for the `_OTA` name that picks the
+bootloader, one for the `_DFU` name that picks the firmware. Whether a file is
+a bootloader is read from its `manifest.json`, not from its name. Without a
+`_DFU` rule (or if it points at a bootloader again) the run fails with
+`no app rule` and the target is left in DFU mode, so check the rules on the
+bench before a flight. **Flash** on a single bundle never chains: a bootloader
+flashed that way needs a second **Flash** with the firmware.
+
+Things that go wrong:
+
+- **A file pattern that matches the wrong board's bundle.** `*bootloader*.zip`
+  with both `wiscore_rak4631_board_bootloader-….zip` and
+  `promicro_nrf52840_bootloader-….zip` on the updater picks the *wiscore* one
+  (it sorts last) — the RAK4631 bootloader, sent to a ProMicro. Start every
+  pattern with the board name, and keep one version per board on the updater.
+- **A name half that matches both names.** `4631:…` matches `RAK4631_OTA` *and*
+  `4631_DFU`, so the second stage gets the first stage's file again. Use the
+  full names from the table below.
+- **Long filenames.** A resolved path is capped at 128 characters including the
+  `/lfs1/` prefix, so a bundle name can be up to 122. A longer one fails the
+  run with "rename it shorter" (and names over 128 are skipped outright, with a
+  warning in the log).
+- The scan filter `ble_name` has to let both names through — e.g.
+  `ble_name=OTA | DFU`.
+
+##### Advertised names by board
+
+The `_OTA` name is what a MeshCore node advertises after `start ota` (set per
+board in MeshCore's `variants/*/…Board.h`). The `_DFU` name is what the
+[OTAFIX bootloader](https://github.com/oltaco/Adafruit_nRF52_Bootloader_OTAFIX)
+advertises in DFU mode (`DEVICE_NAME` in its `src/boards/*/board.mk`). Read from
+MeshCore at `d929643` and OTAFIX `0.9.2-OTAFIX2.3-BP1.4`; ✓ = seen on real hardware.
+
+| Board | After `start ota` | In DFU mode (OTAFIX) |
+|---|---|---|
+| RAK4631 (WisBlock) | `RAK4631_OTA` | `4631_DFU` |
+| RAK3401 | `RAK3401_OTA` | `3401_DFU` |
+| RAK WisMesh Tag | `WISMESHTAG_OTA` | `RTAG_DFU` |
+| Heltec T114 | `T114_OTA` ✓ | `T114_DFU` ✓ |
+| Heltec T096 | `T096_OTA` | `T096_DFU` |
+| Heltec T1 | `T1_OTA` | `T1_DFU` |
+| ProMicro nRF52840 | `ProMicro_OTA` ✓ | `PROM_DFU` ✓ |
+| Seeed XIAO nRF52840 (and the Ikoka boards built on it) | `XIAO_NRF52_OTA` | `XIAO_DFU` |
+| Seeed T1000-E | `T1000E_OTA` | `T1KE_DFU` |
+| Seeed SenseCAP Solar P1 | `SENSECAP_SOLAR_OTA` | `SCAP_DFU` |
+| LilyGO T-Echo | `TECHO_OTA` | `LGTE_DFU` |
+| Elecrow ThinkNode M1 | `THINKNODE_M1_OTA` | `TNM1_DFU` |
+| Elecrow ThinkNode M3 | `THINKNODE_M3_OTA` | `TNM3_DFU` |
+| Elecrow ThinkNode M6 | `THINKNODE_M6_OTA` | `TNM6_DFU` |
+
+A board whose bootloader is the stock Adafruit one, or an OTAFIX build without
+its own name, advertises **`AdaDFU`** in DFU mode. Names change between
+releases — when in doubt, open the scanner in the app at each stage and copy
+the name it shows.
 
 A progress banner appears while it runs, showing the current step, the target
 it found, percentage and transfer rate, and which attempt it is on. It stays
@@ -473,7 +557,8 @@ press — this is the setting that makes the device work at the far end of a
 flight, since every other way of starting an update needs a client in Bluetooth
 range of the updater. It uses `ble_firmware_mapping` to decide which bundle
 goes to which target, so it needs one; armed without a mapping, the device says
-so at boot instead of quietly flashing nothing. **`ext_antenna`** points the
+so at boot instead of quietly flashing nothing. How to write the rules, and the
+names each board advertises, are under [Auto flash rules](#auto-flash-rules). **`ext_antenna`** points the
 antenna switch at the external connector on boards that have one — worth about
 6 dB on the XIAO MG24, in both directions — and is off by default, because with
 nothing plugged into the connector it makes the link worse rather than
