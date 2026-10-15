@@ -67,8 +67,11 @@ is the one least likely to own a probe. To flash a build of your own, run
 1. Everything from here is over Bluetooth, so the XIAO no longer needs a
    computer — only power. See [Powering it](#powering-it) below.
 2. Press **Connect** and pick `Drone MeshCore Updater`.
-3. **Upload** your Nordic DFU `.zip` bundles. They live on the 8 MB flash, so
-   keep a library of them.
+3. **Upload** your Nordic DFU `.zip` bundles. They live on the board's own
+   flash chip, separate from the updater's program: 2 MB on the nRF52840
+   boards (XIAO nRF52840, RAK4631 + RAK15001) — room for a bootloader and three
+   or four MeshCore firmware zips (~190 KB and ~400 KB each) — and 8 MB on the
+   XIAO nRF54LM20A. Room per board is in the [table under Other boards](#other-boards).
 
 ### 3. Flash a target
 
@@ -376,7 +379,7 @@ target**; there is no separate variant to build.
 |---|---|---|---|---|
 | Flashing the updater | web client (CMSIS-DAP), or SWD | web client (serial DFU), or drag `merged.uf2` onto the drive a double-tap of RESET exposes | web client (ROM loader), or `./build.sh flash` | web client (CMSIS-DAP), or SWD |
 | Room for bundles | 8 MB QSPI, ~16 bundles | 2 MB QSPI, ~4 bundles | 4.3 MB internal, ~10 bundles | 4 MB SPI, ~10 bundles |
-| MCUboot slot | 896 KB (31% used) | 368 KB (**80% used**) | 1792 KB (24% used) | 728 KB (43% used) |
+| MCUboot slot | 896 KB (31% used) | 388 KB (**93% used**) | 1792 KB (24% used) | 728 KB (43% used) |
 | Status LED | RGB | RGB | one LED — failure blinks twice per cycle | one LED — same |
 | WiFi | no | no | yes (the point of it) | no |
 | Max BLE TX | +8 dBm | +8 dBm | +20 dBm | +20 dBm (build-time only) |
