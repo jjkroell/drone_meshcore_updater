@@ -91,10 +91,15 @@ static int best_match_in_dir(const char *dir, const char *pat,
 		if (ent.name[0] == '\0') break;          /* end of directory */
 		if (ent.type != FS_DIR_ENTRY_FILE) continue;
 		if (!firmware_map_glob(pat, ent.name)) continue;
+		if (strlen(ent.name) >= best_sz) {
+			LOG_WRN("%s matches '%s' but its name is over %u chars "
+				"— skipped", ent.name, pat, (unsigned)(best_sz - 1));
+			continue;
+		}
 
 		/* Greatest name wins, so rak_v2.zip beats rak_v1.zip. */
 		if (best[0] == '\0' || strcmp(ent.name, best) > 0) {
-			snprintf(best, best_sz, "%s", ent.name);
+			memcpy(best, ent.name, strlen(ent.name) + 1);  /* fits: checked above */
 		}
 	}
 	fs_closedir(&d);
@@ -146,7 +151,7 @@ int firmware_map_resolve(const char *peer_name, const char *mapping,
 		/* Substring match, same semantics as ble_name's tokens. */
 		if (!strstr(peer_name, namepat)) continue;
 
-		char best[FIRMWARE_MAP_PAT_MAX + 1];
+		char best[FIRMWARE_MAP_NAME_MAX + 1];
 		int rc = best_match_in_dir(dir, filepat, best, sizeof(best));
 		if (rc < 0) {
 			/* The rule matched the peer, so this is the answer —
@@ -159,7 +164,17 @@ int firmware_map_resolve(const char *peer_name, const char *mapping,
 			return -ENOENT;
 		}
 
-		snprintf(out_path, out_sz, "%s/%s", dir, best);
+		/* Refuse rather than truncate: a cut path names a file that
+		 * does not exist, and the failure would surface later as an
+		 * open error that says nothing about length. */
+		int n = snprintf(out_path, out_sz, "%s/%s", dir, best);
+		if (n < 0 || (size_t)n >= out_sz) {
+			out_path[0] = '\0';
+			set_err(err, err_sz, "%s/%s is %d chars; the limit is %u — "
+				"rename it shorter", dir, best, n,
+				(unsigned)(out_sz - 1));
+			return -ENAMETOOLONG;
+		}
 		LOG_INF("mapping: peer '%s' ~ '%s' -> %s",
 			peer_name, namepat, out_path);
 		return 0;

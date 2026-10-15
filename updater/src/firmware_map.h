@@ -28,6 +28,14 @@ extern "C" {
 /* Longest glob pattern accepted in a single rule. */
 #define FIRMWARE_MAP_PAT_MAX 64
 
+/* Longest bundle filename a rule can resolve to. Separate from the pattern
+ * limit, which it used to share: a short glob like "*OTAFIX*" can match a
+ * long release name (the OTAFIX bootloader zips are 70 chars), and the match
+ * was silently cut at 64 so the open that followed failed with "not found".
+ * The whole path ("/lfs1/" + name) still has to fit DFU_PATH_MAX (128), so
+ * in practice a name tops out at 122; firmware_map_resolve() says so. */
+#define FIRMWARE_MAP_NAME_MAX 128
+
 /* Resolve `peer_name` to a bundle path inside `dir`.
  *
  * On success returns 0 and writes an absolute path into `out_path`. On
