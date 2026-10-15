@@ -151,6 +151,9 @@ void lora_status_boot(void)
 
 	memset(&e, 0, sizeof(e));
 	e.kind = EVT_HELLO;
+	/* Which reminder to give: with auto_flash the run starts on its own,
+	 * so telling the operator to press Flash would be wrong. */
+	e.result = cfg->auto_flash ? 1U : 0U;
 	push(&e);
 }
 
@@ -431,7 +434,12 @@ static void format(const struct evt *e, char *out, size_t cap)
 
 	switch (e->kind) {
 	case EVT_HELLO:
-		snprintf(out, cap, "online - please start a scan in the app");
+		/* The operator is standing next to the drone with the app open,
+		 * about to fly out of Bluetooth range. The one thing worth saying
+		 * is that a flash has to be started *now* — the app's scanner is
+		 * a different feature and starts nothing. */
+		snprintf(out, cap, e->result ? "online - auto flash armed"
+					     : "online - press Flash or Auto flash before flying off");
 		break;
 	case EVT_SCANNING:
 		snprintf(out, cap, "scanning");
