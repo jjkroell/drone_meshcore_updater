@@ -75,6 +75,9 @@ void lora_status_attempt(uint8_t attempt);
 void lora_status_state(enum dfu_status_state state);
 void lora_status_target(const char *name);
 void lora_status_progress(uint8_t percent, uint32_t sent, uint32_t total);
+/* A bootloader package was delivered and the run goes on to send the
+ * application to the same target: announce it and re-arm the per-run gates. */
+void lora_status_stage(void);
 void lora_status_finish(enum dfu_status_result result);
 
 #else /* !CONFIG_APP_LORA_STATUS */
@@ -90,6 +93,7 @@ static inline void lora_status_progress(uint8_t p, uint32_t s, uint32_t t)
 {
 	ARG_UNUSED(p); ARG_UNUSED(s); ARG_UNUSED(t);
 }
+static inline void lora_status_stage(void) { }
 static inline void lora_status_finish(enum dfu_status_result r) { ARG_UNUSED(r); }
 
 #endif /* CONFIG_APP_LORA_STATUS */

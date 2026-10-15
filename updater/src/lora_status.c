@@ -28,6 +28,7 @@ enum evt_kind {
 	EVT_TARGET,
 	EVT_PROGRESS,
 	EVT_VERIFY,
+	EVT_STAGE,
 	EVT_DONE,
 };
 
@@ -42,8 +43,10 @@ struct evt {
 	char name[LORA_NAME_MAX];
 };
 
-/* Six slots: a run produces at most target + three progress + verify + done,
- * and the thread drains far faster than a DFU generates them. */
+/* Six slots: a run produces at most target + three progress + verify + done
+ * (a chained bootloader+app run, twice that plus one stage line — but spread
+ * over two transfers and a reboot), and the thread drains far faster than a
+ * DFU generates them. */
 K_MSGQ_DEFINE(s_q, sizeof(struct evt), 6, 4);
 
 /* Run state.
@@ -289,6 +292,38 @@ void lora_status_state(enum dfu_status_state state)
 	push(&e);
 }
 
+void lora_status_stage(void)
+{
+	k_spinlock_key_t key;
+	struct evt e;
+
+	/* A bootloader package went in and the runner is going back for the
+	 * application, inside the same run (dfu_runner.c chains it without a
+	 * new dfu_status_begin). Every once-per-run gate below is already
+	 * spent on the bootloader, so without this the application stage —
+	 * the half that leaves the node bootable — would be silent until the
+	 * final DONE. Re-arm them as if a run had started, but keep s_t0 so
+	 * DONE reports the whole update, and keep s_scanned set: this line
+	 * already says what happens next, a "scanning" after it says nothing.
+	 *
+	 * Fires once per chained run (the runner refuses a second bootloader),
+	 * so it cannot multiply under retries the way per-attempt state can. */
+	key = k_spin_lock(&s_lock);
+	memset(&e, 0, sizeof(e));
+	e.kind = EVT_STAGE;
+	memcpy(e.name, s_name, sizeof(e.name));
+	s_high_pct = 0;
+	s_high_bucket = 0;
+	s_announced = false;
+	s_verified = false;
+	k_spin_unlock(&s_lock, key);
+
+	if (!enabled(LORA_EVT_DONE)) {
+		return;
+	}
+	push(&e);
+}
+
 void lora_status_finish(enum dfu_status_result result)
 {
 	k_spinlock_key_t key;
@@ -336,6 +371,8 @@ static const char *result_text(uint8_t r)
 	case DFU_STATUS_RESULT_TARGET_REJECTED: return "peer rejected image";
 	case DFU_STATUS_RESULT_AUTH_REQUIRED: return "needs PIN";
 	case DFU_STATUS_RESULT_AUTH_FAILED: return "wrong PIN";
+	case DFU_STATUS_RESULT_UNREACHABLE_TARGET: return "unreachable";
+	case DFU_STATUS_RESULT_NO_APP_RULE: return "no app rule";
 	default: return "failed";
 	}
 }
@@ -360,6 +397,9 @@ static void format(const struct evt *e, char *out, size_t cap)
 		break;
 	case EVT_VERIFY:
 		snprintf(out, cap, "%s verifying", name);
+		break;
+	case EVT_STAGE:
+		snprintf(out, cap, "%s bootloader in, sending app", name);
 		break;
 	case EVT_DONE:
 	default:

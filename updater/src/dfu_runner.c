@@ -26,6 +26,7 @@
 #include "firmware_map.h"
 #include "dfu_client.h"
 #include "dfu_status.h"
+#include "lora_status.h"
 #include "survey.h"
 #include "battery.h"
 #include "app.h"
@@ -650,6 +651,7 @@ static void run_thread(void *a, void *b, void *c)
 					"bootloader at %s to send the application "
 					"the mapping names for it",
 					chain_bl, chain_pin);
+				lora_status_stage();
 				dfu_status_set_state(DFU_STATUS_SCANNING);
 				continue;    /* doesn't consume a retry */
 			}
