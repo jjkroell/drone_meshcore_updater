@@ -83,57 +83,96 @@ streams the image, validates and activates it.
 
 #### Auto flash rules
 
-`ble_firmware_mapping` is a list of rules separated by `|`. Each rule is
-`advertised-name:file-pattern`:
+`ble_firmware_mapping` tells **Auto flash** which uploaded bundle to send to a
+target, based on the name the target is advertising. In **Config** it is a
+list of rules, one row each: a **name** to look for, and a **file** — the file
+box offers the bundles already on the updater, so pick from the list rather
+than typing.
+
+##### The main use: one board, bootloader and firmware in one flight
+
+This is what auto flash is built for — one board type per flight, updating
+**both the bootloader and the firmware** without flying back to press anything
+in between. Two rules are all it takes:
+
+| Name | File |
+|---|---|
+| `OTA` | the board's **bootloader** bundle (e.g. `promicro_nrf52840_bootloader-0.9.2-OTAFIX2.3-BP1.4_s140_6.1.1.zip`) |
+| `DFU` | the board's **firmware** bundle (e.g. `ProMicro_repeater-1.17.1.zip`) |
+
+and the scan filter `ble_name=OTA | DFU` so both names are let through.
+
+**The sequence**, all in one run, all on its own:
+
+1. **Before the flight**, upload the two bundles for that board, pick them in
+   the two rules above, and delete any other board's bundles from the updater.
+2. **On the target**, run `start ota` from the MeshCore CLI. It now advertises
+   `<board>_OTA` (e.g. `ProMicro_OTA`).
+3. **Auto flash** (the button, or `auto_flash=1` at power-up) scans and finds
+   `ProMicro_OTA`. `OTA` matches → the **bootloader** bundle is chosen, and
+   kept for the rest of this stage.
+4. The target jumps to its bootloader and reappears as `<board>_DFU` (e.g.
+   `PROM_DFU`) at an address one higher. The bootloader is sent. On LoRa:
+   `scanning` → `found ProMicro_OTA` → 25/50/75% → `verifying`.
+5. A bootloader package **erases the firmware** on its way in, so the target
+   comes back in DFU mode with nothing to boot. The updater sees that the
+   bundle was a bootloader (read from its `manifest.json`, not its name) and,
+   instead of finishing, waits for the same device to reappear.
+   On LoRa: `PROM_DFU bootloader in, sending app`.
+6. The target is found again as `PROM_DFU`. `DFU` matches → the **firmware**
+   bundle is sent. On LoRa: `found PROM_DFU` → 25/50/75% → `verifying` →
+   `PROM_DFU DONE in …s` once the target leaves DFU mode and boots its new
+   firmware.
+
+**Firmware only?** Point the `OTA` rule at the firmware bundle too (both rules
+→ firmware). Do not just delete the bootloader bundle: a rule that matches but
+finds no file **fails the run** rather than falling through to the next rule.
+And leaving the bootloader rule in place means every auto flash rewrites the
+bootloader first — 30 s of extra air time and the riskiest step repeated for
+nothing.
+
+**Check on the bench first.** If the `DFU` rule is missing, or points at a
+bootloader again, step 6 fails with `no app rule` and the target is left in DFU
+mode with no firmware. **Flash** on a single bundle never does step 5 — a
+bootloader flashed that way needs a second **Flash** with the firmware.
+
+These generic rules match *any* board's `_OTA` / `_DFU` name, which is exactly
+why the updater should only carry one board's bundles: nothing checks that a
+bootloader suits the board it is sent to. A node is only in OTA mode after
+someone sent it `start ota`, so a stray node of another type is unlikely — but
+not impossible.
+
+##### Several board types on one updater
+
+Put the board's name in each rule instead, so each target only matches its
+own bundles:
 
 ```
 ProMicro_OTA:promicro*bootloader*.zip | PROM_DFU:ProMicro_repeater*.zip
 ```
 
-- **The name half** matches if that text appears *anywhere* in the name the
-  target is advertising. Case-sensitive. The **first** rule that matches wins.
-- **The file half** is matched against the *whole* filename of the bundles
-  you uploaded. `*` = any characters, `?` = one character. Case-sensitive. If
-  several files match, the one whose name sorts **last** wins (so
-  `rak_v2.zip` beats `rak_v1.zip`).
-- The pattern sees the bundle's own filename only — not the `firmware.bin`
-  inside it. `*firmware*.zip` does not match `ProMicro_repeater-1.17.zip`.
-- The whole value is limited to 191 characters.
+(This is the stored form of the setting: `name:file`, rules separated by `|`.)
 
-The bundle is chosen once, from the first name the target is found under, and
-kept for the rest of the run — the target changes its name halfway through
-(`_OTA` → `_DFU` when it jumps to its bootloader) and the file must not change
-with it.
-
-**Bootloader and firmware in one run.** A SoftDevice/bootloader package erases
-the target's application on the way in, so the target comes back in DFU mode
-with nothing to boot. Under auto flash the updater does not stop there: it
-waits for the same device to reappear under its **DFU-mode name**, looks that
-name up in the rules again, and sends the application. That is why a
-bootloader update needs **two rules** — one for the `_OTA` name that picks the
-bootloader, one for the `_DFU` name that picks the firmware. Whether a file is
-a bootloader is read from its `manifest.json`, not from its name. Without a
-`_DFU` rule (or if it points at a bootloader again) the run fails with
-`no app rule` and the target is left in DFU mode, so check the rules on the
-bench before a flight. **Flash** on a single bundle never chains: a bootloader
-flashed that way needs a second **Flash** with the firmware.
-
-Things that go wrong:
-
-- **A file pattern that matches the wrong board's bundle.** `*bootloader*.zip`
-  with both `wiscore_rak4631_board_bootloader-….zip` and
+- **The name** matches if that text appears *anywhere* in the advertised name.
+  Case-sensitive. Rules are tried top to bottom (↑/↓ in the editor) and the
+  **first** match wins.
+- **The file** is matched against the *whole* bundle filename. `*` = any
+  characters, `?` = one character. Case-sensitive. If several files match, the
+  one whose name sorts **last** wins (`rak_v2.zip` beats `rak_v1.zip`). It
+  sees the bundle's own name only — `*firmware*.zip` does not match
+  `ProMicro_repeater-1.17.zip` just because `firmware.bin` is inside it.
+- **A file pattern can match the wrong board.** `*bootloader*.zip` with both
+  `wiscore_rak4631_board_bootloader-….zip` and
   `promicro_nrf52840_bootloader-….zip` on the updater picks the *wiscore* one
   (it sorts last) — the RAK4631 bootloader, sent to a ProMicro. Start every
-  pattern with the board name, and keep one version per board on the updater.
-- **A name half that matches both names.** `4631:…` matches `RAK4631_OTA` *and*
-  `4631_DFU`, so the second stage gets the first stage's file again. Use the
-  full names from the table below.
-- **Long filenames.** A resolved path is capped at 128 characters including the
-  `/lfs1/` prefix, so a bundle name can be up to 122. A longer one fails the
-  run with "rename it shorter" (and names over 128 are skipped outright, with a
-  warning in the log).
-- The scan filter `ble_name` has to let both names through — e.g.
-  `ble_name=OTA | DFU`.
+  pattern with the board name.
+- **A name can match both stages.** `4631` matches `RAK4631_OTA` *and*
+  `4631_DFU`, so step 6 would get the bootloader again. Use the full names
+  from the table below.
+
+Limits: the whole setting is 191 characters; a bundle filename can be up to
+122 (the path, `/lfs1/` included, is capped at 128) — longer fails the run
+with "rename it shorter".
 
 ##### Advertised names by board
 
