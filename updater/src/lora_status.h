@@ -80,6 +80,8 @@ void lora_status_progress(uint8_t percent, uint32_t sent, uint32_t total);
 void lora_status_stage(void);
 /* The app's target scanner started (not a DFU run). Rate-limited. */
 void lora_status_survey(void);
+/* The run delivered only a bootloader: the DONE line says to flash the app. */
+void lora_status_bootloader_only(void);
 void lora_status_finish(enum dfu_status_result result);
 
 #else /* !CONFIG_APP_LORA_STATUS */
@@ -97,6 +99,7 @@ static inline void lora_status_progress(uint8_t p, uint32_t s, uint32_t t)
 }
 static inline void lora_status_stage(void) { }
 static inline void lora_status_survey(void) { }
+static inline void lora_status_bootloader_only(void) { }
 static inline void lora_status_finish(enum dfu_status_result r) { ARG_UNUSED(r); }
 
 #endif /* CONFIG_APP_LORA_STATUS */

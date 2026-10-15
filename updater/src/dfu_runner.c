@@ -656,6 +656,15 @@ static void run_thread(void *a, void *b, void *c)
 				continue;    /* doesn't consume a retry */
 			}
 			LOG_INF("DFU runner: SUCCESS");
+			/* A bootloader package that gets here was not chained —
+			 * a manual Flash, since auto mode always goes on to the
+			 * application above. The target is in DFU mode with no
+			 * firmware, and a bare "DONE" on the channel would say
+			 * the node is finished when it is not. */
+			if (payload.kind == DFU_PAYLOAD_ZIP &&
+			    (payload.zip.type & (FW_TYPE_SOFTDEVICE | FW_TYPE_BOOTLOADER))) {
+				lora_status_bootloader_only();
+			}
 			led_set_state(LED_STATE_DONE_OK);
 			dfu_status_finish(DFU_STATUS_RESULT_OK);
 			goto done;

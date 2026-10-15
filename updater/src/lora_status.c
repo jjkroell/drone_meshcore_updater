@@ -42,6 +42,7 @@ struct evt {
 	uint8_t attempt;
 	uint8_t retries;
 	uint8_t result;
+	uint8_t bl_only;
 	uint32_t sent;
 	uint32_t total;
 	char name[LORA_NAME_MAX];
@@ -76,6 +77,7 @@ static uint8_t s_high_bucket;
 static bool s_scanned;        /* SCANNING announced once per run */
 static bool s_announced;      /* target announced once per run */
 static bool s_verified;       /* VERIFYING announced once per run */
+static bool s_bl_only;        /* run delivered a bootloader and stopped */
 static uint32_t s_t0;
 /* Uptime of the last survey announcement; see lora_status_survey(). */
 static uint32_t s_survey_at;
@@ -163,6 +165,7 @@ void lora_status_begin(uint8_t retries)
 	s_scanned = false;
 	s_announced = false;
 	s_verified = false;
+	s_bl_only = false;
 	s_name[0] = '\0';
 	s_t0 = k_uptime_get_32();
 	k_spin_unlock(&s_lock, key);
@@ -360,6 +363,14 @@ void lora_status_stage(void)
 	push(&e);
 }
 
+void lora_status_bootloader_only(void)
+{
+	k_spinlock_key_t key = k_spin_lock(&s_lock);
+
+	s_bl_only = true;
+	k_spin_unlock(&s_lock, key);
+}
+
 void lora_status_finish(enum dfu_status_result result)
 {
 	k_spinlock_key_t key;
@@ -373,6 +384,7 @@ void lora_status_finish(enum dfu_status_result result)
 	memset(&e, 0, sizeof(e));
 	e.kind = EVT_DONE;
 	e.result = (uint8_t)result;
+	e.bl_only = s_bl_only;
 	e.percent = s_high_pct;
 	e.attempt = s_attempt;
 	e.retries = s_retries;
@@ -442,7 +454,10 @@ static void format(const struct evt *e, char *out, size_t cap)
 		break;
 	case EVT_DONE:
 	default:
-		if (e->result == DFU_STATUS_RESULT_OK) {
+		if (e->result == DFU_STATUS_RESULT_OK && e->bl_only) {
+			snprintf(out, cap, "%s bootloader DONE in %us - flash app next",
+				 name, e->sent / 1000U);
+		} else if (e->result == DFU_STATUS_RESULT_OK) {
 			snprintf(out, cap, "%s DONE in %us", name, e->sent / 1000U);
 		} else {
 			/* The high-water percentage is the most useful number
