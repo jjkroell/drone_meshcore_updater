@@ -283,6 +283,12 @@ void dfu_status_begin(uint8_t retries)
 
 	mark_dirty(true);
 	lora_status_begin(retries);
+	/* A run *starts* in SCANNING (set directly above), so the runner's own
+	 * dfu_status_set_state(SCANNING) a moment later is no change and never
+	 * reaches the LoRa sender — which is why "scanning" was never heard on
+	 * a run that succeeded first time. Say it here instead; lora_status's
+	 * once-per-run gate keeps every later SCANNING (retries) silent. */
+	lora_status_state(DFU_STATUS_SCANNING);
 }
 
 void dfu_status_bundle(const char *path)
