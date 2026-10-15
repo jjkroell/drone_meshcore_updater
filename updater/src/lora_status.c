@@ -22,6 +22,9 @@ LOG_MODULE_REGISTER(lora_status, LOG_LEVEL_INF);
  * that would not fit in a status message anyway. Each queue slot carries one. */
 #define LORA_NAME_MAX 24
 
+/* Minimum spacing of "scanning for targets" announcements. */
+#define LORA_SURVEY_HOLDOFF_MS 60000U
+
 enum evt_kind {
 	EVT_HELLO = 0,
 	EVT_SCANNING,
@@ -29,6 +32,7 @@ enum evt_kind {
 	EVT_PROGRESS,
 	EVT_VERIFY,
 	EVT_STAGE,
+	EVT_SURVEY,
 	EVT_DONE,
 };
 
@@ -73,6 +77,9 @@ static bool s_scanned;        /* SCANNING announced once per run */
 static bool s_announced;      /* target announced once per run */
 static bool s_verified;       /* VERIFYING announced once per run */
 static uint32_t s_t0;
+/* Uptime of the last survey announcement; see lora_status_survey(). */
+static uint32_t s_survey_at;
+static bool s_survey_sent;
 
 /*
  * A per-boot base for message timestamps, used when no wall clock is known.
@@ -292,6 +299,35 @@ void lora_status_state(enum dfu_status_state state)
 	push(&e);
 }
 
+void lora_status_survey(void)
+{
+	k_spinlock_key_t key;
+	struct evt e;
+	uint32_t now = k_uptime_get_32();
+	bool send;
+
+	/* The app's scanner, not a DFU run — that one announces through
+	 * lora_status_state(DFU_STATUS_SCANNING). survey.c calls this only on
+	 * a not-running -> running edge, but the survey stops itself after 6 s
+	 * without a poll, so a phone that flicks out of the app and back makes
+	 * a fresh edge every time. Hold to one per minute so that churn cannot
+	 * become channel traffic. */
+	key = k_spin_lock(&s_lock);
+	send = !s_survey_sent || (now - s_survey_at) >= LORA_SURVEY_HOLDOFF_MS;
+	if (send) {
+		s_survey_sent = true;
+		s_survey_at = now;
+	}
+	k_spin_unlock(&s_lock, key);
+
+	if (!send || !enabled(LORA_EVT_SCANNING)) {
+		return;
+	}
+	memset(&e, 0, sizeof(e));
+	e.kind = EVT_SURVEY;
+	push(&e);
+}
+
 void lora_status_stage(void)
 {
 	k_spinlock_key_t key;
@@ -397,6 +433,9 @@ static void format(const struct evt *e, char *out, size_t cap)
 		break;
 	case EVT_VERIFY:
 		snprintf(out, cap, "%s verifying", name);
+		break;
+	case EVT_SURVEY:
+		snprintf(out, cap, "scanning for targets");
 		break;
 	case EVT_STAGE:
 		snprintf(out, cap, "%s bootloader in, sending app", name);

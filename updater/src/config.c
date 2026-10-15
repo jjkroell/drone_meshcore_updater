@@ -301,7 +301,7 @@ static void apply_kv(struct app_config *c, const char *key, const char *val)
 			if (!known && len > 0) {
 				LOG_WRN("config.txt: lora_events has no event "
 					"called \"%.*s\" — expected target, "
-					"progress, verify or done", (int)len, p);
+					"progress, verify, done or scanning", (int)len, p);
 			}
 			p = end;
 		}

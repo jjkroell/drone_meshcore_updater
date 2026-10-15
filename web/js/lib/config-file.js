@@ -753,7 +753,9 @@ export const CONFIG_SCHEMA = [
     def: "scanning,target,progress,verify,done",
     desc: `Comma-separated: scanning, target, progress, verify, done. Empty
            announces nothing while leaving the channel configured. "scanning"
-           fires once when a run starts looking for a target. Start with "done"
+           fires once when a run starts looking for a target, and as
+           "scanning for targets" when the app's scanner opens (at most once
+           a minute). Start with "done"
            alone when bringing a new mesh up — progress messages transmit in
            the middle of a DFU stream, which is the one moment worth being
            careful about.`,

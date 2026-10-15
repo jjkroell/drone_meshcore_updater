@@ -17,6 +17,8 @@
 #include "elegantota.h"
 #endif
 
+#include "lora_status.h"
+
 LOG_MODULE_REGISTER(survey, LOG_LEVEL_INF);
 
 static enum survey_kind s_kind;
@@ -64,6 +66,10 @@ int survey_start(enum survey_kind kind, bool reset)
 	 * same path rather than growing a second way to empty a table: starting
 	 * a survey that is not running clears it, so stopping first is all a
 	 * reset has to do. */
+	/* Sampled before any stop below, so a Refresh (reset) of a running
+	 * scan does not count as a new one for the LoRa announcement. */
+	const bool was_running = (survey_active() != SURVEY_NONE);
+
 	if (reset || (s_kind != SURVEY_NONE && s_kind != kind)) {
 		survey_stop();
 	}
@@ -83,6 +89,9 @@ int survey_start(enum survey_kind kind, bool reset)
 	}
 	if (rc == 0) {
 		s_kind = kind;
+		if (!was_running) {
+			lora_status_survey();
+		}
 	}
 	return rc;
 }
