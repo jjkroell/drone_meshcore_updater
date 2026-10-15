@@ -54,20 +54,16 @@ export default {
       push();
     };
 
-    /* Suggest what is actually on the device. Globbing a versioned filename
-     * is the thing an operator most wants and least wants to hand-write, so
-     * offer both the literal name and a wildcard for its version suffix. */
+    /* Suggest what is actually on the device: one entry per bundle, its exact
+     * name. A wildcard form used to be offered beside each one, which doubled
+     * the list for no gain in the usual one-board-per-flight setup; a pattern
+     * can still be typed by hand. */
     const suggestions = computed(() => {
       if (currentPath() !== "/lfs1") return [];
-      const out = new Set();
-      for (const e of entries.value) {
-        if (e.type === 1) continue;                 // 1 = directory
-        if (!/\.zip$/i.test(e.name)) continue;
-        out.add(e.name);
-        const stem = e.name.replace(/[-_.]?v?\d[\d._-]*\.zip$/i, "");
-        if (stem && stem + ".zip" !== e.name) out.add(`${stem}*.zip`);
-      }
-      return [...out].sort();
+      return entries.value
+        .filter(e => e.type !== 1 && /\.zip$/i.test(e.name))   // 1 = directory
+        .map(e => e.name)
+        .sort();
     });
 
     const packed = computed(() => serializeMapping(rows.value));
