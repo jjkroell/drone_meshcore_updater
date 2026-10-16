@@ -5,12 +5,26 @@ import {
 import ThemePicker from "./ThemePicker.js";
 import Icon from "./Icon.js";
 import BatteryGauge from "./BatteryGauge.js";
+import { ref, onMounted } from "../vue.js";
+import { loadIndex } from "../lib/firmware-manifest.js";
 
 export default {
   name: "AppHeader",
   components: { ThemePicker, Icon, BatteryGauge },
   setup() {
+    /* The release this site was deployed with. Pages is redeployed per
+     * release, so the tag on the staged firmware is the page's own version
+     * too. Blank when there is no manifest (a local checkout) — no guess. */
+    const release = ref("");
+    onMounted(async () => {
+      try {
+        /* One release stages every board, so they all carry the same tag. */
+        release.value = (await loadIndex()).boards.find(b => b.tag)?.tag ?? "";
+      } catch { /* offline with nothing cached, or a local checkout */ }
+    });
+
     return {
+      release,
       connected, connecting, deviceName, bluetoothAvailable,
       updateReady, reloadForUpdate, installReady, installApp,
       /* One handler, because there is one button. Whichever it is, it is
@@ -34,6 +48,7 @@ export default {
            dropped before release and survived only because grepping for
            "Drone MCU Updater" does not match it. -->
       <span class="title">Drone MeshCore Updater</span>
+      <span class="release" v-if="release" title="Release this page and its firmware come from">{{ release }}</span>
       <!-- The state indicator is the icon now, not an abstract dot. A dot
            says "something is on"; bluetooth_connected says what, and
            bluetooth_disabled says what is missing rather than leaving the

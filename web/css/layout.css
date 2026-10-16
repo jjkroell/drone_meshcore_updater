@@ -10,6 +10,10 @@ header .title {
   font-size: 12px; font-weight: 600; letter-spacing: 0.12em;
   text-transform: uppercase; color: var(--muted);
 }
+header .release {
+  font-family: var(--mono); font-size: 11px; color: var(--muted);
+  margin-left: -4px;
+}
 header .device { font-family: var(--mono); font-size: 13px; }
 /* The updater's own battery. Colour comes from the band class the component
    sets, never from --accent: see tokens.css at --ok for why a status colour
