@@ -575,6 +575,17 @@ static void tx_thread(void *a, void *b, void *c)
 			k_msleep(min_gap - gap);
 		}
 
+		/* A progress line that something newer has queued up behind is
+		 * stale: with a 4.5 s gap a whole transfer can finish while
+		 * "75%" waits its turn, and it then arrives after the bootloader
+		 * is done. Skip it; whatever is behind it says more. Decided
+		 * after the sleep, which is when it goes stale. last_tx is left
+		 * alone, so the next message still waits out the gap. */
+		if (e.kind == EVT_PROGRESS && k_msgq_num_used_get(&s_q) > 0U) {
+			LOG_INF("skip stale: %u%%", e.percent);
+			continue;
+		}
+
 		format(&e, text, sizeof(text));
 
 		/* ⚠ No RTC on this board. MeshCore treats the timestamp as

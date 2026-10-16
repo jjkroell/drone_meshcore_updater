@@ -30,7 +30,9 @@
  * the whole air time. So a hook only formats a small event and drops it in a
  * queue; a dedicated low-priority thread does the encoding and the radio. On
  * a full queue the *oldest* event is dropped: an overtaken progress update is
- * stale, and the newest is always the one worth having.
+ * stale, and the newest is always the one worth having. Likewise a progress
+ * event that is still waiting out lora_min_gap_ms when anything newer joins
+ * the queue is skipped rather than sent late.
  *
  * SPDX-License-Identifier: BSD-3-Clause
  */

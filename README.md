@@ -563,7 +563,7 @@ web client's Config dialog.
 | `lora_path_hash` | `2` | bytes of its own hash each repeater appends. 1 routes fine but collides, so you cannot always tell *which* repeater relayed. |
 | `lora_region` | *(empty)* | restrict rebroadcast to one MeshCore transport region |
 | `lora_events` | all four | `target,progress,verify,done` — exact tokens |
-| `lora_min_gap_ms` | `3000` | hard floor between transmissions |
+| `lora_min_gap_ms` | `3000` | hard floor between transmissions; a progress line overtaken while it waits is skipped |
 | `lora_hello` | off | one `online` message at boot |
 | `lora_epoch` | `0` | Unix seconds at boot; see above |
 
